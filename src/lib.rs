@@ -1,8 +1,7 @@
 #![doc = include_str!("../README.md")]
 
-use bevy::prelude::{AssetEvent, Assets, EventReader, Res, ResMut, Shader};
 
-use pipeline_cache::AppPipelineCache;
+
 
 mod error;
 mod pipeline_cache;
@@ -24,7 +23,7 @@ pub mod prelude {
     pub use bevy::render::render_resource::{ShaderRef, ShaderType};
 }
 
-pub(crate) fn process_pipeline_queue_system(mut pipeline_cache: ResMut<AppPipelineCache>) {
+/* pub(crate) fn process_pipeline_queue_system(mut pipeline_cache: ResMut<AppPipelineCache>) {
     pipeline_cache.process_queue();
 }
 
@@ -50,3 +49,4 @@ pub(crate) fn extract_shaders(
         }
     }
 }
+ */

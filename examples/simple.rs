@@ -16,8 +16,8 @@ impl ComputeShader for SimpleShader {
 struct SimpleComputeWorker;
 
 impl ComputeWorker for SimpleComputeWorker {
-    fn build(world: &mut World) -> AppComputeWorker<Self> {
-        let worker = AppComputeWorkerBuilder::new(world)
+    fn build(app: &mut App) -> AppComputeWorker<Self> {
+        let worker = AppComputeWorkerBuilder::new(app)
             .add_uniform("uni", &5.)
             .add_staging("values", &[1., 2., 3., 4.])
             .add_pass::<SimpleShader>([4, 1, 1], &["uni", "values"])

@@ -4,7 +4,7 @@ use std::{marker::PhantomData, ops::Deref};
 use bevy::{
     prelude::{Res, ResMut, Resource},
     render::{
-        render_resource::{Buffer, ComputePipeline},
+        render_resource::{Buffer, CachedComputePipelineId, ComputePipeline},
         renderer::{RenderDevice, RenderQueue},
     },
     utils::HashMap,
@@ -13,10 +13,7 @@ use bytemuck::{bytes_of, cast_slice, from_bytes, AnyBitPattern, NoUninit};
 use wgpu::{BindGroupEntry, CommandEncoder, CommandEncoderDescriptor, ComputePassDescriptor};
 
 use crate::{
-    error::{Error, Result},
-    pipeline_cache::{AppPipelineCache, CachedAppComputePipelineId},
-    traits::ComputeWorker,
-    worker_builder::AppComputeWorkerBuilder,
+    error::{Error, Result}, pipeline_cache::AppPipelineCache, traits::ComputeWorker, worker_builder::AppComputeWorkerBuilder
 };
 
 #[derive(PartialEq, Clone, Copy)]
@@ -62,7 +59,7 @@ pub struct AppComputeWorker<W: ComputeWorker> {
     pub(crate) state: WorkerState,
     render_device: RenderDevice,
     render_queue: RenderQueue,
-    cached_pipeline_ids: HashMap<String, CachedAppComputePipelineId>,
+    cached_pipeline_ids: HashMap<String, CachedComputePipelineId>,
     pipelines: HashMap<String, Option<ComputePipeline>>,
     buffers: HashMap<String, Buffer>,
     staging_buffers: HashMap<String, StagingBuffer>,
@@ -75,8 +72,8 @@ pub struct AppComputeWorker<W: ComputeWorker> {
 impl<W: ComputeWorker> From<&AppComputeWorkerBuilder<'_, W>> for AppComputeWorker<W> {
     /// Create a new [`AppComputeWorker<W>`].
     fn from(builder: &AppComputeWorkerBuilder<W>) -> Self {
-        let render_device = builder.world.resource::<RenderDevice>().clone();
-        let render_queue = builder.world.resource::<RenderQueue>().clone();
+        let render_device = builder.app.world.resource::<RenderDevice>().clone();
+        let render_queue = builder.app.world.resource::<RenderQueue>().clone();
 
         let pipelines = builder
             .cached_pipeline_ids

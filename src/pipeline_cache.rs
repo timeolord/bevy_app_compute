@@ -1,4 +1,31 @@
-// This is some nasty shit, I admit.
+use bevy::{prelude::*, render::render_resource::{CachedComputePipelineId, CachedPipeline, CachedPipelineState, ComputePipeline, Pipeline}};
+
+#[derive(Resource)]
+pub struct AppPipelineCache {
+    pub pipeline_cache: Vec<CachedPipeline>,
+}
+impl AppPipelineCache {
+    #[inline]
+    pub fn get_compute_pipeline(&self, id: CachedComputePipelineId) -> Option<&ComputePipeline> {
+        if let CachedPipelineState::Ok(Pipeline::ComputePipeline(pipeline)) =
+            &self.pipeline_cache[id.id()].state
+        {
+            Some(pipeline)
+        } else {
+            None
+        }
+    }
+}
+
+
+
+
+
+
+
+
+
+/* // This is some nasty shit, I admit.
 // We cannot use PipelineCache from App World natively, so I tried my best to create one that's available from App World
 // If only bevy could allow use to use PipelineCache from App World...:)
 
@@ -526,3 +553,4 @@ impl<'a> Iterator for ErrorSources<'a> {
 }
 
 impl<'a> FusedIterator for ErrorSources<'a> {}
+ */

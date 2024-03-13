@@ -1,20 +1,21 @@
 use std::{borrow::Cow, marker::PhantomData};
 
 use bevy::{
-    prelude::{AssetServer, World},
+    prelude::{App, AssetServer},
     render::{
         render_resource::{
             encase::{private::WriteInto, StorageBuffer, UniformBuffer},
-            Buffer, ComputePipelineDescriptor, ShaderRef, ShaderType,
+            Buffer, CachedComputePipelineId, ComputePipelineDescriptor, PipelineCache, ShaderRef,
+            ShaderType,
         },
         renderer::RenderDevice,
+        RenderApp,
     },
     utils::HashMap,
 };
 use wgpu::{util::BufferInitDescriptor, BufferDescriptor, BufferUsages};
 
 use crate::{
-    pipeline_cache::{AppPipelineCache, CachedAppComputePipelineId},
     traits::{ComputeShader, ComputeWorker},
     worker::{AppComputeWorker, ComputePass, RunMode, StagingBuffer, Step},
 };
@@ -22,8 +23,8 @@ use crate::{
 /// A builder struct to build [`AppComputeWorker<W>`]
 /// from your structs implementing [`ComputeWorker`]
 pub struct AppComputeWorkerBuilder<'a, W: ComputeWorker> {
-    pub(crate) world: &'a mut World,
-    pub(crate) cached_pipeline_ids: HashMap<String, CachedAppComputePipelineId>,
+    pub(crate) app: &'a mut App,
+    pub(crate) cached_pipeline_ids: HashMap<String, CachedComputePipelineId>,
     pub(crate) buffers: HashMap<String, Buffer>,
     pub(crate) staging_buffers: HashMap<String, StagingBuffer>,
     pub(crate) steps: Vec<Step>,
@@ -33,11 +34,9 @@ pub struct AppComputeWorkerBuilder<'a, W: ComputeWorker> {
 
 impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     /// Create a new builder.
-    ///
-    /// Since it requests `&mut World`, you cannot create builders from non exclusive systems.
-    pub fn new(world: &'a mut World) -> Self {
+    pub fn new(app: &'a mut App) -> Self {
         Self {
-            world,
+            app,
             cached_pipeline_ids: HashMap::default(),
             buffers: HashMap::default(),
             staging_buffers: HashMap::default(),
@@ -53,7 +52,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
         let mut buffer = UniformBuffer::new(Vec::new());
         buffer.write::<T>(uniform).unwrap();
 
-        let render_device = self.world.resource::<RenderDevice>();
+        let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
             name.to_owned(),
@@ -71,7 +70,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
         let mut buffer = StorageBuffer::new(Vec::new());
         buffer.write::<T>(storage).unwrap();
 
-        let render_device = self.world.resource::<RenderDevice>();
+        let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
             name.to_owned(),
@@ -93,7 +92,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
         let mut buffer = StorageBuffer::new(Vec::new());
         buffer.write::<T>(storage).unwrap();
 
-        let render_device = self.world.resource::<RenderDevice>();
+        let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
             name.to_owned(),
@@ -114,7 +113,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
         self.add_rw_storage(name, data);
         let buffer = self.buffers.get(name).unwrap();
 
-        let render_device = self.world.resource::<RenderDevice>();
+        let render_device = self.app.world.resource::<RenderDevice>();
 
         let staging = StagingBuffer {
             mapped: true,
@@ -133,7 +132,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
 
     /// Add a new empty uniform buffer to the worker.
     pub fn add_empty_uniform(&mut self, name: &str, size: u64) -> &mut Self {
-        let render_device = self.world.resource::<RenderDevice>();
+        let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
             name.to_owned(),
@@ -150,7 +149,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
 
     /// Add a new empty storage buffer to the worker. It will be read only.
     pub fn add_empty_storage(&mut self, name: &str, size: u64) -> &mut Self {
-        let render_device = self.world.resource::<RenderDevice>();
+        let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
             name.to_owned(),
@@ -166,7 +165,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
 
     /// Add a new empty read/write storage buffer to the worker.
     pub fn add_empty_rw_storage(&mut self, name: &str, size: u64) -> &mut Self {
-        let render_device = self.world.resource::<RenderDevice>();
+        let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
             name.to_owned(),
@@ -189,7 +188,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
 
         let buffer = self.buffers.get(name).unwrap();
 
-        let render_device = self.world.resource::<RenderDevice>();
+        let render_device = self.app.world.resource::<RenderDevice>();
 
         let staging = StagingBuffer {
             mapped: true,
@@ -210,9 +209,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     /// They will run sequentially in the order you insert them.
     pub fn add_pass<S: ComputeShader>(&mut self, workgroups: [u32; 3], vars: &[&str]) -> &mut Self {
         if !self.cached_pipeline_ids.contains_key(S::type_path()) {
-            let pipeline_cache = self.world.resource::<AppPipelineCache>();
-
-            let asset_server = self.world.resource::<AssetServer>();
+            let asset_server = self.app.world.resource::<AssetServer>();
             let shader = match S::shader() {
                 ShaderRef::Default => None,
                 ShaderRef::Handle(handle) => Some(handle),
@@ -220,7 +217,12 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
             }
             .unwrap();
 
-            let cached_id = pipeline_cache.queue_app_compute_pipeline(ComputePipelineDescriptor {
+            let pipeline_cache = self
+                .app
+                .sub_app_mut(RenderApp)
+                .world
+                .resource::<PipelineCache>();
+            let cached_id = pipeline_cache.queue_compute_pipeline(ComputePipelineDescriptor {
                 label: None,
                 layout: S::layouts().to_vec(),
                 push_constant_ranges: S::push_constant_ranges().to_vec(),

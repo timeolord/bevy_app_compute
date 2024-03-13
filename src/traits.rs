@@ -1,7 +1,5 @@
 use bevy::{
-    prelude::World,
-    reflect::TypePath,
-    render::render_resource::{BindGroupLayout, ShaderDefVal, ShaderRef},
+    app::App, reflect::TypePath, render::render_resource::{BindGroupLayout, ShaderDefVal, ShaderRef}
 };
 use wgpu::PushConstantRange;
 
@@ -9,7 +7,7 @@ use crate::worker::AppComputeWorker;
 
 /// Trait to declare [`AppComputeWorker<W>`] structs.
 pub trait ComputeWorker: Sized + Send + Sync + 'static {
-    fn build(world: &mut World) -> AppComputeWorker<Self>;
+    fn build(app: &mut App) -> AppComputeWorker<Self>;
 }
 
 /// Trait to declare your shaders.

@@ -53,7 +53,7 @@ impl ComputeShader for BoidsShader {
 struct BoidWorker;
 
 impl ComputeWorker for BoidWorker {
-    fn build(world: &mut World) -> AppComputeWorker<Self> {
+    fn build(app: &mut App) -> AppComputeWorker<Self> {
         let params = Params {
             speed: 0.5,
             rule_1_distance: 0.2,
@@ -78,7 +78,7 @@ impl ComputeWorker for BoidWorker {
             });
         }
 
-        AppComputeWorkerBuilder::new(world)
+        AppComputeWorkerBuilder::new(app)
             .add_uniform("params", &params)
             .add_uniform("delta_time", &0.004f32)
             .add_staging("boids_src", &initial_boids_data)

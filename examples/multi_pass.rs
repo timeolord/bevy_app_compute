@@ -25,8 +25,8 @@ impl ComputeShader for SecondPassShader {
 struct SimpleComputeWorker;
 
 impl ComputeWorker for SimpleComputeWorker {
-    fn build(world: &mut World) -> AppComputeWorker<Self> {
-        let worker = AppComputeWorkerBuilder::new(world)
+    fn build(app: &mut App) -> AppComputeWorker<Self> {
+        let worker = AppComputeWorkerBuilder::new(app)
             .add_uniform("value", &3.)
             .add_storage("input", &[1., 2., 3., 4.])
             .add_staging("output", &[0f32; 4])
