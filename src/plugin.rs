@@ -23,10 +23,8 @@ impl Plugin for AppComputePlugin {
     }
 
     fn finish(&self, app: &mut App) {
-        app.sub_app_mut(RenderApp).add_systems(
-            Render,
-            update_app_pipeline.in_set(RenderSet::ExtractCommands),
-        );
+        app.sub_app_mut(RenderApp)
+            .add_systems(ExtractSchedule, update_app_pipeline);
         /*  app.insert_resource(AppPipelineCache::new(render_device))
         .add_systems(PreUpdate, extract_shaders)
         .add_systems(Update, process_pipeline_queue_system); */

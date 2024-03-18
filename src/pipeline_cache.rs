@@ -1,4 +1,9 @@
-use bevy::{prelude::*, render::render_resource::{CachedComputePipelineId, CachedPipeline, CachedPipelineState, ComputePipeline, Pipeline}};
+use bevy::{
+    prelude::*,
+    render::render_resource::{
+        CachedComputePipelineId, CachedPipeline, CachedPipelineState, ComputePipeline, Pipeline,
+    },
+};
 
 #[derive(Resource)]
 pub struct AppPipelineCache {
@@ -7,23 +12,33 @@ pub struct AppPipelineCache {
 impl AppPipelineCache {
     #[inline]
     pub fn get_compute_pipeline(&self, id: CachedComputePipelineId) -> Option<&ComputePipeline> {
-        if let CachedPipelineState::Ok(Pipeline::ComputePipeline(pipeline)) =
-            &self.pipeline_cache[id.id()].as_ref().unwrap().state
-        {
-            Some(pipeline)
+        self.pipeline_cache
+            .get(id.id())
+            .map(|x| {
+                x.as_ref().map(|x| {
+                    if let CachedPipelineState::Ok(Pipeline::ComputePipeline(pipeline)) = &x.state {
+                        Some(pipeline)
+                    } else {
+                        None
+                    }
+                })
+            })
+            .flatten()
+            .flatten()
+
+        /* if let Some(pipeline_option) = self.pipeline_cache.get(id.id()) {
+            if let CachedPipelineState::Ok(Pipeline::ComputePipeline(pipeline)) =
+                &pipeline_option.as_ref().unwrap().state
+            {
+                Some(pipeline)
+            } else {
+                None
+            }
         } else {
             None
-        }
+        } */
     }
 }
-
-
-
-
-
-
-
-
 
 /* // This is some nasty shit, I admit.
 // We cannot use PipelineCache from App World natively, so I tried my best to create one that's available from App World
