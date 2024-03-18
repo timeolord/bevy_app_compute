@@ -5,7 +5,8 @@ use bevy::{
     render::{
         render_resource::{
             CachedPipeline, CachedPipelineState, Pipeline, PipelineCache, PipelineDescriptor,
-        }, MainWorld, Render, RenderApp, RenderSet
+        },
+        MainWorld, Render, RenderApp, RenderSet,
     },
 };
 
@@ -36,12 +37,11 @@ fn update_app_pipeline(pipeline_cache: Res<PipelineCache>, mut app_world: ResMut
     let mut cloned_pipelines = vec![];
     for pipeline in pipeline_cache.pipelines() {
         let cloned_state = match &pipeline.state {
-            CachedPipelineState::Ok(x) => CachedPipelineState::Ok(match x {
+            CachedPipelineState::Ok(x) => Some(CachedPipelineState::Ok(match x {
                 Pipeline::RenderPipeline(x) => Pipeline::RenderPipeline(x.clone()),
                 Pipeline::ComputePipeline(x) => Pipeline::ComputePipeline(x.clone()),
-            }),
-            //If a pipeline is not okay, no need to transfer it to the app world.
-            _ => continue,
+            })),
+            _ => None,
         };
         let cloned_descriptor = match &pipeline.descriptor {
             PipelineDescriptor::RenderPipelineDescriptor(x) => {
@@ -51,10 +51,14 @@ fn update_app_pipeline(pipeline_cache: Res<PipelineCache>, mut app_world: ResMut
                 PipelineDescriptor::ComputePipelineDescriptor(x.clone())
             }
         };
-        let cloned_pipeline = CachedPipeline {
+        let cloned_pipeline = cloned_state.map(|state| CachedPipeline {
+            state,
+            descriptor: cloned_descriptor,
+        });
+        /* let cloned_pipeline = CachedPipeline {
             state: cloned_state,
             descriptor: cloned_descriptor,
-        };
+        }; */
         cloned_pipelines.push(cloned_pipeline);
     }
     app_pipeline_cache.pipeline_cache = cloned_pipelines;

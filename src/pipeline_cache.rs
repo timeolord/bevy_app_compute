@@ -2,13 +2,13 @@ use bevy::{prelude::*, render::render_resource::{CachedComputePipelineId, Cached
 
 #[derive(Resource)]
 pub struct AppPipelineCache {
-    pub pipeline_cache: Vec<CachedPipeline>,
+    pub pipeline_cache: Vec<Option<CachedPipeline>>,
 }
 impl AppPipelineCache {
     #[inline]
     pub fn get_compute_pipeline(&self, id: CachedComputePipelineId) -> Option<&ComputePipeline> {
         if let CachedPipelineState::Ok(Pipeline::ComputePipeline(pipeline)) =
-            &self.pipeline_cache[id.id()].state
+            &self.pipeline_cache[id.id()].as_ref().unwrap().state
         {
             Some(pipeline)
         } else {
