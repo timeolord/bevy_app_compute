@@ -1,12 +1,15 @@
-use bevy::{
-    app::App, reflect::TypePath, render::render_resource::{BindGroupLayout, ShaderDefVal, ShaderRef}
-};
-use wgpu::PushConstantRange;
-
 use crate::worker::AppComputeWorker;
+use bevy::{
+    app::App,
+    reflect::TypePath,
+    render::render_resource::{BindGroupLayout, ShaderDefVal, ShaderRef},
+};
+use std::fmt::Debug;
+use wgpu::PushConstantRange;
 
 /// Trait to declare [`AppComputeWorker<W>`] structs.
 pub trait ComputeWorker: Sized + Send + Sync + 'static {
+    type Fields: Debug + Copy;
     fn build(app: &mut App) -> AppComputeWorker<Self>;
 }
 

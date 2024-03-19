@@ -13,6 +13,7 @@ use bevy::{
     },
     utils::HashMap,
 };
+use std::fmt::Debug;
 use wgpu::{util::BufferInitDescriptor, BufferDescriptor, BufferUsages};
 
 use crate::{
@@ -22,17 +23,17 @@ use crate::{
 
 /// A builder struct to build [`AppComputeWorker<W>`]
 /// from your structs implementing [`ComputeWorker`]
-pub struct AppComputeWorkerBuilder<'a, W: ComputeWorker> {
+pub struct AppComputeWorkerBuilder<'a, W: ComputeWorker, E: Debug + Copy> {
     pub(crate) app: &'a mut App,
     pub(crate) cached_pipeline_ids: HashMap<String, CachedComputePipelineId>,
     pub(crate) buffers: HashMap<String, Buffer>,
     pub(crate) staging_buffers: HashMap<String, StagingBuffer>,
     pub(crate) steps: Vec<Step>,
     pub(crate) run_mode: RunMode,
-    _phantom: PhantomData<W>,
+    _phantom: PhantomData<(W, E)>,
 }
 
-impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
+impl<'a, W: ComputeWorker, E: Debug + Copy> AppComputeWorkerBuilder<'a, W, E> {
     /// Create a new builder.
     pub fn new(app: &'a mut App) -> Self {
         Self {
@@ -47,7 +48,7 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     }
 
     /// Add a new uniform buffer to the worker, and fill it with `uniform`.
-    pub fn add_uniform<T: ShaderType + WriteInto>(&mut self, name: &str, uniform: &T) -> &mut Self {
+    pub fn add_uniform<T: ShaderType + WriteInto>(&mut self, name: E, uniform: &T) -> &mut Self {
         T::assert_uniform_compat();
         let mut buffer = UniformBuffer::new(Vec::new());
         buffer.write::<T>(uniform).unwrap();
@@ -55,9 +56,9 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
         let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
-            name.to_owned(),
+            format!("{name:?}"),
             render_device.create_buffer_with_data(&BufferInitDescriptor {
-                label: Some(name),
+                label: Some(&format!("{name:?}")),
                 contents: buffer.as_ref(),
                 usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
             }),
@@ -66,16 +67,16 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     }
 
     /// Add a new storage buffer to the worker, and fill it with `storage`. It will be read only.
-    pub fn add_storage<T: ShaderType + WriteInto>(&mut self, name: &str, storage: &T) -> &mut Self {
+    pub fn add_storage<T: ShaderType + WriteInto>(&mut self, name: E, storage: &T) -> &mut Self {
         let mut buffer = StorageBuffer::new(Vec::new());
         buffer.write::<T>(storage).unwrap();
 
         let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
-            name.to_owned(),
+            format!("{name:?}"),
             render_device.create_buffer_with_data(&BufferInitDescriptor {
-                label: Some(name),
+                label: Some(&format!("{name:?}")),
                 contents: buffer.as_ref(),
                 usage: BufferUsages::COPY_DST | BufferUsages::STORAGE,
             }),
@@ -84,20 +85,16 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     }
 
     /// Add a new read/write storage buffer to the worker, and fill it with `storage`.
-    pub fn add_rw_storage<T: ShaderType + WriteInto>(
-        &mut self,
-        name: &str,
-        storage: &T,
-    ) -> &mut Self {
+    pub fn add_rw_storage<T: ShaderType + WriteInto>(&mut self, name: E, storage: &T) -> &mut Self {
         let mut buffer = StorageBuffer::new(Vec::new());
         buffer.write::<T>(storage).unwrap();
 
         let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
-            name.to_owned(),
+            format!("{name:?}"),
             render_device.create_buffer_with_data(&BufferInitDescriptor {
-                label: Some(name),
+                label: Some(&format!("{name:?}")),
                 contents: buffer.as_ref(),
                 usage: BufferUsages::COPY_DST | BufferUsages::COPY_SRC | BufferUsages::STORAGE,
             }),
@@ -109,35 +106,35 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     /// Additionally, it will create a read/write storage buffer to access from
     /// your shaders.
     /// The buffer will be filled with `data`
-    pub fn add_staging<T: ShaderType + WriteInto>(&mut self, name: &str, data: &T) -> &mut Self {
+    pub fn add_staging<T: ShaderType + WriteInto>(&mut self, name: E, data: &T) -> &mut Self {
         self.add_rw_storage(name, data);
-        let buffer = self.buffers.get(name).unwrap();
+        let buffer = self.buffers.get(&format!("{name:?}")).unwrap();
 
         let render_device = self.app.world.resource::<RenderDevice>();
 
         let staging = StagingBuffer {
             mapped: true,
             buffer: render_device.create_buffer(&BufferDescriptor {
-                label: Some(name),
+                label: Some(&format!("{name:?}")),
                 size: buffer.size(),
                 usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
                 mapped_at_creation: true,
             }),
         };
 
-        self.staging_buffers.insert(name.to_owned(), staging);
+        self.staging_buffers.insert(format!("{name:?}"), staging);
 
         self
     }
 
     /// Add a new empty uniform buffer to the worker.
-    pub fn add_empty_uniform(&mut self, name: &str, size: u64) -> &mut Self {
+    pub fn add_empty_uniform(&mut self, name: E, size: u64) -> &mut Self {
         let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
-            name.to_owned(),
+            format!("{name:?}"),
             render_device.create_buffer(&BufferDescriptor {
-                label: Some(name),
+                label: Some(&format!("{name:?}")),
                 size,
                 usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
                 mapped_at_creation: false,
@@ -148,13 +145,13 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     }
 
     /// Add a new empty storage buffer to the worker. It will be read only.
-    pub fn add_empty_storage(&mut self, name: &str, size: u64) -> &mut Self {
+    pub fn add_empty_storage(&mut self, name: E, size: u64) -> &mut Self {
         let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
-            name.to_owned(),
+            format!("{name:?}"),
             render_device.create_buffer(&BufferDescriptor {
-                label: Some(name),
+                label: Some(&format!("{name:?}")),
                 size,
                 usage: BufferUsages::COPY_DST | BufferUsages::STORAGE,
                 mapped_at_creation: false,
@@ -164,13 +161,13 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     }
 
     /// Add a new empty read/write storage buffer to the worker.
-    pub fn add_empty_rw_storage(&mut self, name: &str, size: u64) -> &mut Self {
+    pub fn add_empty_rw_storage(&mut self, name: E, size: u64) -> &mut Self {
         let render_device = self.app.world.resource::<RenderDevice>();
 
         self.buffers.insert(
-            name.to_owned(),
+            format!("{name:?}"),
             render_device.create_buffer(&BufferDescriptor {
-                label: Some(name),
+                label: Some(&format!("{name:?}")),
                 size,
                 usage: BufferUsages::COPY_DST | BufferUsages::COPY_SRC | BufferUsages::STORAGE,
                 mapped_at_creation: false,
@@ -183,31 +180,31 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
     /// Additionally, it will create a read/write storage buffer to access from
     /// your shaders.
     /// The buffer will empty.
-    pub fn add_empty_staging(&mut self, name: &str, size: u64) -> &mut Self {
+    pub fn add_empty_staging(&mut self, name: E, size: u64) -> &mut Self {
         self.add_empty_rw_storage(name, size);
 
-        let buffer = self.buffers.get(name).unwrap();
+        let buffer = self.buffers.get(&format!("{name:?}")).unwrap();
 
         let render_device = self.app.world.resource::<RenderDevice>();
 
         let staging = StagingBuffer {
             mapped: true,
             buffer: render_device.create_buffer(&BufferDescriptor {
-                label: Some(name),
+                label: Some(&format!("{name:?}")),
                 size: buffer.size(),
                 usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
                 mapped_at_creation: true,
             }),
         };
 
-        self.staging_buffers.insert(name.to_owned(), staging);
+        self.staging_buffers.insert(format!("{name:?}"), staging);
 
         self
     }
 
     /// Add a new compute pass to your worker.
     /// They will run sequentially in the order you insert them.
-    pub fn add_pass<S: ComputeShader>(&mut self, workgroups: [u32; 3], vars: &[&str]) -> &mut Self {
+    pub fn add_pass<S: ComputeShader>(&mut self, workgroups: [u32; 3], vars: &[E]) -> &mut Self {
         if !self.cached_pipeline_ids.contains_key(S::type_path()) {
             let asset_server = self.app.world.resource::<AssetServer>();
             let shader = match S::shader() {
@@ -237,15 +234,15 @@ impl<'a, W: ComputeWorker> AppComputeWorkerBuilder<'a, W> {
 
         self.steps.push(Step::ComputePass(ComputePass {
             workgroups,
-            vars: vars.iter().map(|a| String::from(*a)).collect(),
+            vars: vars.iter().map(|a| format!("{a:?}")).collect(),
             shader_type_path: S::type_path().to_string(),
         }));
         self
     }
 
-    pub fn add_swap(&mut self, buffer_a: &str, buffer_b: &str) -> &mut Self {
+    pub fn add_swap(&mut self, buffer_a: E, buffer_b: E) -> &mut Self {
         self.steps
-            .push(Step::Swap(buffer_a.to_owned(), buffer_b.to_owned()));
+            .push(Step::Swap(format!("{buffer_a:?}"), format!("{buffer_b:?}")));
         self
     }
 

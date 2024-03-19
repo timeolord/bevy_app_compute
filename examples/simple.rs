@@ -2,6 +2,7 @@
 
 use bevy::{prelude::*, render::render_resource::ShaderRef};
 use bevy_app_compute::prelude::*;
+use strum_macros::Display;
 
 #[derive(TypePath)]
 struct SimpleShader;
@@ -12,15 +13,23 @@ impl ComputeShader for SimpleShader {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum ComputeWorkerFields {
+    Uniform,
+    Values,
+}
+
 #[derive(Resource)]
 struct SimpleComputeWorker;
 
 impl ComputeWorker for SimpleComputeWorker {
+    type Fields = ComputeWorkerFields;
+    
     fn build(app: &mut App) -> AppComputeWorker<Self> {
         let worker = AppComputeWorkerBuilder::new(app)
-            .add_uniform("uni", &5.)
-            .add_staging("values", &[1., 2., 3., 4.])
-            .add_pass::<SimpleShader>([4, 1, 1], &["uni", "values"])
+            .add_uniform(Self::Fields::Uniform, &5.)
+            .add_staging(Self::Fields::Values, &[1., 2., 3., 4.])
+            .add_pass::<SimpleShader>([4, 1, 1], &[Self::Fields::Uniform, Self::Fields::Values])
             .build();
 
         worker
@@ -41,9 +50,9 @@ fn test(mut compute_worker: ResMut<AppComputeWorker<SimpleComputeWorker>>) {
         return;
     };
 
-    let result: Vec<f32> = compute_worker.read_vec("values");
+    let result: Vec<f32> = compute_worker.read_vec(<SimpleComputeWorker as ComputeWorker>::Fields::Values);
 
-    compute_worker.write_slice::<f32>("values", &[2., 3., 4., 5.]);
+    compute_worker.write_slice::<f32>(<SimpleComputeWorker as ComputeWorker>::Fields::Values, &[2., 3., 4., 5.]);
 
     println!("got {:?}", result)
 }

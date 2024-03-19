@@ -25,18 +25,6 @@ impl AppPipelineCache {
             })
             .flatten()
             .flatten()
-
-        /* if let Some(pipeline_option) = self.pipeline_cache.get(id.id()) {
-            if let CachedPipelineState::Ok(Pipeline::ComputePipeline(pipeline)) =
-                &pipeline_option.as_ref().unwrap().state
-            {
-                Some(pipeline)
-            } else {
-                None
-            }
-        } else {
-            None
-        } */
     }
 }
 

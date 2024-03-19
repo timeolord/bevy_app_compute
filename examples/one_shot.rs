@@ -1,6 +1,6 @@
 //! Example showing how to execute compute shaders on demand
 
-use bevy::{prelude::*, render::render_resource::ShaderRef};
+use bevy::prelude::*;
 use bevy_app_compute::prelude::*;
 
 #[derive(TypePath)]
@@ -12,15 +12,23 @@ impl ComputeShader for SimpleShader {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum ComputeWorkerFields {
+    Uniform,
+    Values,
+}
+
 #[derive(Resource)]
 struct SimpleComputeWorker;
 
 impl ComputeWorker for SimpleComputeWorker {
+    type Fields = ComputeWorkerFields;
+
     fn build(app: &mut App) -> AppComputeWorker<Self> {
         let worker = AppComputeWorkerBuilder::new(app)
-            .add_uniform("uni", &5.)
-            .add_staging("values", &[1., 2., 3., 4.])
-            .add_pass::<SimpleShader>([4, 1, 1], &["uni", "values"])
+            .add_uniform(Self::Fields::Uniform, &5.)
+            .add_staging(Self::Fields::Values, &[1., 2., 3., 4.])
+            .add_pass::<SimpleShader>([4, 1, 1], &[Self::Fields::Uniform, Self::Fields::Values])
             .one_shot()
             .build();
 
@@ -58,7 +66,7 @@ fn read_data(mut compute_worker: ResMut<AppComputeWorker<SimpleComputeWorker>>) 
         return;
     };
 
-    let result: Vec<f32> = compute_worker.read_vec("values");
+    let result: Vec<f32> = compute_worker.read_vec(SimpleComputeWorker::Fields::Values);
 
     compute_worker.write_slice("values", &result);
 

@@ -1,6 +1,12 @@
 use core::panic;
 use std::{marker::PhantomData, ops::Deref};
 
+use crate::{
+    error::{Error, Result},
+    pipeline_cache::AppPipelineCache,
+    traits::ComputeWorker,
+    worker_builder::AppComputeWorkerBuilder,
+};
 use bevy::{
     prelude::{Res, ResMut, Resource},
     render::{
@@ -10,11 +16,8 @@ use bevy::{
     utils::HashMap,
 };
 use bytemuck::{bytes_of, cast_slice, from_bytes, AnyBitPattern, NoUninit};
+use std::fmt::Debug;
 use wgpu::{BindGroupEntry, CommandEncoder, CommandEncoderDescriptor, ComputePassDescriptor};
-
-use crate::{
-    error::{Error, Result}, pipeline_cache::AppPipelineCache, traits::ComputeWorker, worker_builder::AppComputeWorkerBuilder
-};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum RunMode {
@@ -69,9 +72,11 @@ pub struct AppComputeWorker<W: ComputeWorker> {
     _phantom: PhantomData<W>,
 }
 
-impl<W: ComputeWorker> From<&AppComputeWorkerBuilder<'_, W>> for AppComputeWorker<W> {
+impl<W: ComputeWorker, E: Debug + Copy> From<&AppComputeWorkerBuilder<'_, W, E>>
+    for AppComputeWorker<W>
+{
     /// Create a new [`AppComputeWorker<W>`].
-    fn from(builder: &AppComputeWorkerBuilder<W>) -> Self {
+    fn from(builder: &AppComputeWorkerBuilder<W, E>) -> Self {
         let render_device = builder.app.world.resource::<RenderDevice>().clone();
         let render_queue = builder.app.world.resource::<RenderQueue>().clone();
 
@@ -219,9 +224,9 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
 
     /// Read data from `target` staging buffer, return raw bytes
     #[inline]
-    pub fn try_read_raw<'a>(&'a self, target: &str) -> Result<(impl Deref<Target = [u8]> + 'a)> {
-        let Some(staging_buffer) = &self.staging_buffers.get(target) else {
-            return Err(Error::StagingBufferNotFound(target.to_owned()));
+    pub fn try_read_raw<'a>(&'a self, target: W::Fields) -> Result<(impl Deref<Target = [u8]> + 'a)> {
+        let Some(staging_buffer) = &self.staging_buffers.get(&format!("{target:?}")) else {
+            return Err(Error::StagingBufferNotFound(format!("{target:?}")));
         };
 
         let result = staging_buffer.buffer.slice(..).get_mapped_range();
@@ -232,13 +237,13 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
     /// Read data from `target` staging buffer, return raw bytes
     /// Panics on error.
     #[inline]
-    pub fn read_raw<'a>(&'a self, target: &str) -> (impl Deref<Target = [u8]> + 'a) {
+    pub fn read_raw<'a>(&'a self, target: W::Fields) -> (impl Deref<Target = [u8]> + 'a) {
         self.try_read_raw(target).unwrap()
     }
 
     /// Try Read data from `target` staging buffer, return a single `B: Pod`
     #[inline]
-    pub fn try_read<B: AnyBitPattern>(&self, target: &str) -> Result<B> {
+    pub fn try_read<B: AnyBitPattern>(&self, target: W::Fields) -> Result<B> {
         let result = *from_bytes::<B>(&self.try_read_raw(target)?);
         Ok(result)
     }
@@ -246,13 +251,13 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
     /// Try Read data from `target` staging buffer, return a single `B: Pod`
     /// In case of error, this function will panic.
     #[inline]
-    pub fn read<B: AnyBitPattern>(&self, target: &str) -> B {
+    pub fn read<B: AnyBitPattern>(&self, target: W::Fields) -> B {
         self.try_read(target).unwrap()
     }
 
     /// Try Read data from `target` staging buffer, return a vector of `B: Pod`
     #[inline]
-    pub fn try_read_vec<B: AnyBitPattern>(&self, target: &str) -> Result<Vec<B>> {
+    pub fn try_read_vec<B: AnyBitPattern>(&self, target: W::Fields) -> Result<Vec<B>> {
         let bytes = self.try_read_raw(target)?;
         Ok(cast_slice::<u8, B>(&bytes).to_vec())
     }
@@ -260,15 +265,15 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
     /// Try Read data from `target` staging buffer, return a vector of `B: Pod`
     /// In case of error, this function will panic.
     #[inline]
-    pub fn read_vec<B: AnyBitPattern>(&self, target: &str) -> Vec<B> {
+    pub fn read_vec<B: AnyBitPattern>(&self, target: W::Fields) -> Vec<B> {
         self.try_read_vec(target).unwrap()
     }
 
     /// Write data to `target` buffer.
     #[inline]
-    pub fn try_write<T: NoUninit>(&mut self, target: &str, data: &T) -> Result<()> {
-        let Some(buffer) = &self.buffers.get(target) else {
-            return Err(Error::BufferNotFound(target.to_owned()));
+    pub fn try_write<T: NoUninit>(&mut self, target: W::Fields, data: &T) -> Result<()> {
+        let Some(buffer) = &self.buffers.get(&format!("{target:?}")) else {
+            return Err(Error::BufferNotFound(format!("{target:?}")));
         };
 
         let bytes = bytes_of(data);
@@ -281,15 +286,15 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
     /// Write data to `target` buffer.
     /// In case of error, this function will panic.
     #[inline]
-    pub fn write<T: NoUninit>(&mut self, target: &str, data: &T) {
+    pub fn write<T: NoUninit>(&mut self, target: W::Fields, data: &T) {
         self.try_write(target, data).unwrap()
     }
 
     /// Write data to `target` buffer.
     #[inline]
-    pub fn try_write_slice<T: NoUninit>(&mut self, target: &str, data: &[T]) -> Result<()> {
-        let Some(buffer) = &self.buffers.get(target) else {
-            return Err(Error::BufferNotFound(target.to_owned()));
+    pub fn try_write_slice<T: NoUninit>(&mut self, target: W::Fields, data: &[T]) -> Result<()> {
+        let Some(buffer) = &self.buffers.get(&format!("{target:?}")) else {
+            return Err(Error::BufferNotFound(format!("{target:?}")));
         };
 
         let bytes = cast_slice(data);
@@ -302,7 +307,7 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
     /// Write data to `target` buffer.
     /// In case of error, this function will panic.
     #[inline]
-    pub fn write_slice<T: NoUninit>(&mut self, target: &str, data: &[T]) {
+    pub fn write_slice<T: NoUninit>(&mut self, target: W::Fields, data: &[T]) {
         self.try_write_slice(target, data).unwrap()
     }
 
