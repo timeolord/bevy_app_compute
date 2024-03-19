@@ -206,11 +206,13 @@ impl<'a, W: ComputeWorker, E: Debug + Copy> AppComputeWorkerBuilder<'a, W, E> {
     /// They will run sequentially in the order you insert them.
     pub fn add_pass<S: ComputeShader>(&mut self, workgroups: [u32; 3], vars: &[E]) -> &mut Self {
         if !self.cached_pipeline_ids.contains_key(S::type_path()) {
-            let asset_server = self.app.world.resource::<AssetServer>();
-            let shader = match S::shader() {
+            let shader = match S::shader(self.app) {
                 ShaderRef::Default => None,
                 ShaderRef::Handle(handle) => Some(handle),
-                ShaderRef::Path(path) => Some(asset_server.load(path)),
+                ShaderRef::Path(path) => {
+                    let asset_server = self.app.world.resource::<AssetServer>();
+                    Some(asset_server.load(path))
+                }
             }
             .unwrap();
 

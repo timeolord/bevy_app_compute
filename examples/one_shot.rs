@@ -7,7 +7,7 @@ use bevy_app_compute::prelude::*;
 struct SimpleShader;
 
 impl ComputeShader for SimpleShader {
-    fn shader() -> ShaderRef {
+    fn shader(_app: &mut App) -> ShaderRef {
         "shaders/simple.wgsl".into()
     }
 }

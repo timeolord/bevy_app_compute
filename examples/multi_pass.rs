@@ -7,7 +7,7 @@ use bevy_app_compute::prelude::*;
 struct FirstPassShader;
 
 impl ComputeShader for FirstPassShader {
-    fn shader() -> ShaderRef {
+    fn shader(_app: &mut App) -> ShaderRef {
         "shaders/first_pass.wgsl".into()
     }
 }
@@ -16,7 +16,7 @@ impl ComputeShader for FirstPassShader {
 struct SecondPassShader;
 
 impl ComputeShader for SecondPassShader {
-    fn shader() -> ShaderRef {
+    fn shader(_app: &mut App) -> ShaderRef {
         "shaders/second_pass.wgsl".into()
     }
 }

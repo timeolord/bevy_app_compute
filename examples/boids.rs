@@ -45,7 +45,7 @@ struct Boid {
 struct BoidsShader;
 
 impl ComputeShader for BoidsShader {
-    fn shader() -> ShaderRef {
+    fn shader(_app: &mut App) -> ShaderRef {
         "shaders/boids.wgsl".into()
     }
 }
@@ -165,7 +165,10 @@ fn move_entities(
 
     let boids = worker.read_vec::<Boid>(<BoidWorker as ComputeWorker>::Fields::Destination);
 
-    worker.write(<BoidWorker as ComputeWorker>::Fields::DeltaTime, &time.delta_seconds());
+    worker.write(
+        <BoidWorker as ComputeWorker>::Fields::DeltaTime,
+        &time.delta_seconds(),
+    );
 
     q_boid
         .par_iter_mut()
