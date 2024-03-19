@@ -1,8 +1,7 @@
 //! Simple, hello world example to show the basic concept
 
-use bevy::{prelude::*, render::render_resource::ShaderRef};
+use bevy::prelude::*;
 use bevy_app_compute::prelude::*;
-use strum_macros::Display;
 
 #[derive(TypePath)]
 struct SimpleShader;
@@ -24,7 +23,7 @@ struct SimpleComputeWorker;
 
 impl ComputeWorker for SimpleComputeWorker {
     type Fields = ComputeWorkerFields;
-    
+
     fn build(app: &mut App) -> AppComputeWorker<Self> {
         //You can import the enum variants to avoid writing the full paths
         //use ComputeWorkerFields::*;
@@ -51,10 +50,14 @@ fn test(mut compute_worker: ResMut<AppComputeWorker<SimpleComputeWorker>>) {
     if !compute_worker.ready() {
         return;
     };
-    
-    let result: Vec<f32> = compute_worker.read_vec(<SimpleComputeWorker as ComputeWorker>::Fields::Values);
 
-    compute_worker.write_slice::<f32>(<SimpleComputeWorker as ComputeWorker>::Fields::Values, &[2., 3., 4., 5.]);
+    let result: Vec<f32> =
+        compute_worker.read_vec(<SimpleComputeWorker as ComputeWorker>::Fields::Values);
+
+    compute_worker.write_slice::<f32>(
+        <SimpleComputeWorker as ComputeWorker>::Fields::Values,
+        &[2., 3., 4., 5.],
+    );
 
     println!("got {:?}", result)
 }

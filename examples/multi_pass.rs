@@ -1,6 +1,6 @@
 //! Example showing how to have multiple passes
 
-use bevy::{prelude::*, reflect::TypePath, render::render_resource::ShaderRef};
+use bevy::{prelude::*, reflect::TypePath};
 use bevy_app_compute::prelude::*;
 
 #[derive(TypePath)]
@@ -65,7 +65,8 @@ fn test(compute_worker: Res<AppComputeWorker<SimpleComputeWorker>>) {
         return;
     };
 
-    let result: Vec<f32> = compute_worker.read_vec(<SimpleComputeWorker as ComputeWorker>::Fields::Output);
+    let result: Vec<f32> =
+        compute_worker.read_vec(<SimpleComputeWorker as ComputeWorker>::Fields::Output);
 
     println!("got {:?}", result) // [16., 25., 36., 49.]
 }

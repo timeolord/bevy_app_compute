@@ -6,7 +6,7 @@ use bevy::{
         render_resource::{
             CachedPipeline, CachedPipelineState, Pipeline, PipelineCache, PipelineDescriptor,
         },
-        MainWorld, Render, RenderApp, RenderSet,
+        MainWorld, RenderApp,
     },
 };
 
