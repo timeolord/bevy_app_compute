@@ -25,6 +25,8 @@ impl ComputeWorker for SimpleComputeWorker {
     type Fields = ComputeWorkerFields;
 
     fn build(app: &mut App) -> AppComputeWorker<Self> {
+        //You can import the enum variants to avoid writing the full paths
+        //use ComputeWorkerFields::*;
         let worker = AppComputeWorkerBuilder::new(app)
             .add_uniform(Self::Fields::Uniform, &5.)
             .add_staging(Self::Fields::Values, &[1., 2., 3., 4.])
@@ -66,9 +68,9 @@ fn read_data(mut compute_worker: ResMut<AppComputeWorker<SimpleComputeWorker>>) 
         return;
     };
 
-    let result: Vec<f32> = compute_worker.read_vec(SimpleComputeWorker::Fields::Values);
+    let result: Vec<f32> = compute_worker.read_vec(<SimpleComputeWorker as ComputeWorker>::Fields::Values);
 
-    compute_worker.write_slice("values", &result);
+    compute_worker.write_slice(<SimpleComputeWorker as ComputeWorker>::Fields::Values, &result);
 
     println!("got {:?}", result)
 }

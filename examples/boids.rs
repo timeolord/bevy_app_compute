@@ -50,9 +50,18 @@ impl ComputeShader for BoidsShader {
     }
 }
 
+#[derive(Debug, Copy, Clone)]
+enum BoidsWorkerFields {
+    Parameters,
+    DeltaTime,
+    Source,
+    Destination,
+}
+
 struct BoidWorker;
 
 impl ComputeWorker for BoidWorker {
+    type Fields = BoidsWorkerFields;
     fn build(app: &mut App) -> AppComputeWorker<Self> {
         let params = Params {
             speed: 0.5,
@@ -78,16 +87,18 @@ impl ComputeWorker for BoidWorker {
             });
         }
 
+        //You can import the enum variants to avoid writing the full paths
+        use BoidsWorkerFields::*;
         AppComputeWorkerBuilder::new(app)
-            .add_uniform("params", &params)
-            .add_uniform("delta_time", &0.004f32)
-            .add_staging("boids_src", &initial_boids_data)
-            .add_staging("boids_dst", &initial_boids_data)
+            .add_uniform(Parameters, &params)
+            .add_uniform(DeltaTime, &0.004f32)
+            .add_staging(Source, &initial_boids_data)
+            .add_staging(Destination, &initial_boids_data)
             .add_pass::<BoidsShader>(
                 [NUM_BOIDS, 1, 1],
-                &["params", "delta_time", "boids_src", "boids_dst"],
+                &[Parameters, DeltaTime, Source, Destination],
             )
-            .add_swap("boids_src", "boids_dst")
+            .add_swap(Source, Destination)
             .build()
     }
 }
@@ -152,9 +163,9 @@ fn move_entities(
 
     let window = q_window.single();
 
-    let boids = worker.read_vec::<Boid>("boids_dst");
+    let boids = worker.read_vec::<Boid>(<BoidWorker as ComputeWorker>::Fields::Destination);
 
-    worker.write("delta_time", &time.delta_seconds());
+    worker.write(<BoidWorker as ComputeWorker>::Fields::DeltaTime, &time.delta_seconds());
 
     q_boid
         .par_iter_mut()

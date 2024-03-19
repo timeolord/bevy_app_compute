@@ -24,14 +24,24 @@ impl ComputeShader for SecondPassShader {
 #[derive(Resource)]
 struct SimpleComputeWorker;
 
+#[derive(Debug, Copy, Clone)]
+enum ComputeWorkerFields {
+    Value,
+    Input,
+    Output,
+}
+
 impl ComputeWorker for SimpleComputeWorker {
+    type Fields = ComputeWorkerFields;
     fn build(app: &mut App) -> AppComputeWorker<Self> {
+        //You can import the enum variants to avoid writing the full paths
+        use ComputeWorkerFields::*;
         let worker = AppComputeWorkerBuilder::new(app)
-            .add_uniform("value", &3.)
-            .add_storage("input", &[1., 2., 3., 4.])
-            .add_staging("output", &[0f32; 4])
-            .add_pass::<FirstPassShader>([4, 1, 1], &["value", "input", "output"]) // add each item + `value` from `input` to `output`
-            .add_pass::<SecondPassShader>([4, 1, 1], &["output"]) // multiply each element of `output` by itself
+            .add_uniform(Value, &3.)
+            .add_storage(Input, &[1., 2., 3., 4.])
+            .add_staging(Output, &[0f32; 4])
+            .add_pass::<FirstPassShader>([4, 1, 1], &[Value, Input, Output]) // add each item + `value` from `input` to `output`
+            .add_pass::<SecondPassShader>([4, 1, 1], &[Output]) // multiply each element of `output` by itself
             .build();
 
         // [1. + 3., 2. + 3., 3. + 3., 4. + 3.] = [4., 5., 6., 7.]
@@ -55,7 +65,7 @@ fn test(compute_worker: Res<AppComputeWorker<SimpleComputeWorker>>) {
         return;
     };
 
-    let result: Vec<f32> = compute_worker.read_vec("output");
+    let result: Vec<f32> = compute_worker.read_vec(<SimpleComputeWorker as ComputeWorker>::Fields::Output);
 
     println!("got {:?}", result) // [16., 25., 36., 49.]
 }
