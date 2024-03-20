@@ -41,7 +41,7 @@ pub(crate) enum Step {
 
 #[derive(Clone, Debug)]
 pub(crate) struct ComputePass {
-    pub(crate) workgroups: [u32; 3],
+    pub(crate) dispatch_size: [u32; 3],
     pub(crate) vars: Vec<String>,
     pub(crate) shader_type_path: String,
 }
@@ -151,9 +151,9 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
             cpass.set_pipeline(pipeline);
             cpass.set_bind_group(0, &bind_group, &[]);
             cpass.dispatch_workgroups(
-                compute_pass.workgroups[0],
-                compute_pass.workgroups[1],
-                compute_pass.workgroups[2],
+                compute_pass.dispatch_size[0],
+                compute_pass.dispatch_size[1],
+                compute_pass.dispatch_size[2],
             )
         }
 
@@ -224,7 +224,10 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
 
     /// Read data from `target` staging buffer, return raw bytes
     #[inline]
-    pub fn try_read_raw<'a>(&'a self, target: W::Fields) -> Result<(impl Deref<Target = [u8]> + 'a)> {
+    pub fn try_read_raw<'a>(
+        &'a self,
+        target: W::Fields,
+    ) -> Result<(impl Deref<Target = [u8]> + 'a)> {
         let Some(staging_buffer) = &self.staging_buffers.get(&format!("{target:?}")) else {
             return Err(Error::StagingBufferNotFound(format!("{target:?}")));
         };
@@ -392,10 +395,12 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
     }
 
     pub(crate) fn unmap_all(mut worker: ResMut<Self>) {
-        for (_, staging_buffer) in &mut worker.staging_buffers {
-            if staging_buffer.mapped {
-                staging_buffer.buffer.unmap();
-                staging_buffer.mapped = false;
+        if worker.poll() {
+            for (_, staging_buffer) in &mut worker.staging_buffers {
+                if staging_buffer.mapped {
+                    staging_buffer.buffer.unmap();
+                    staging_buffer.mapped = false;
+                }
             }
         }
     }
@@ -421,4 +426,21 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
             );
         }
     }
+
+    /* pub(crate) fn handle_shader_dependencies(
+        mut worker: ResMut<Self>,
+        mut shader_assets: ResMut<Assets<Shader>>,
+    ) {
+        let shaders = take(&mut worker.shaders);
+        shaders.into_iter().for_each(|(handle, dependencies)| {
+            //Wait for shader to load
+            while shader_assets.get(handle.clone()).is_none() {}
+            let shader = shader_assets.get_mut(handle).unwrap();
+            shader.imports.extend(
+                dependencies
+                    .into_iter()
+                    .map(|path| ShaderImport::AssetPath(path.to_str().unwrap().to_string())),
+            );
+        });
+    } */
 }

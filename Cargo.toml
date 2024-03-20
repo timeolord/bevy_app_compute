@@ -39,3 +39,6 @@ name = "one_shot"
 
 [[example]]
 name = "boids"
+
+[[example]]
+name = "dependencies"

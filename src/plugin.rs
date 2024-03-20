@@ -53,10 +53,6 @@ fn update_app_pipeline(pipeline_cache: Res<PipelineCache>, mut app_world: ResMut
             state,
             descriptor: cloned_descriptor,
         });
-        /* let cloned_pipeline = CachedPipeline {
-            state: cloned_state,
-            descriptor: cloned_descriptor,
-        }; */
         cloned_pipelines.push(cloned_pipeline);
     }
     app_pipeline_cache.pipeline_cache = cloned_pipelines;
@@ -82,6 +78,7 @@ impl<W: ComputeWorker> Plugin for AppComputeWorkerPlugin<W> {
         let worker = W::build(app);
 
         app.insert_resource(worker)
+            /* .add_systems(PreUpdate, AppComputeWorker::<W>::handle_shader_dependencies) */
             .add_systems(Update, AppComputeWorker::<W>::extract_pipelines)
             .add_systems(
                 PostUpdate,

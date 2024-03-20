@@ -1,12 +1,19 @@
-use std::{borrow::Cow, marker::PhantomData};
+use std::{
+    borrow::Cow,
+    fs::File,
+    hash::{DefaultHasher, Hash, Hasher},
+    io::prelude::Read,
+    marker::PhantomData,
+};
 
 use bevy::{
+    asset::{Assets, Handle},
     prelude::{App, AssetServer},
     render::{
         render_resource::{
             encase::{private::WriteInto, StorageBuffer, UniformBuffer},
-            Buffer, CachedComputePipelineId, ComputePipelineDescriptor, PipelineCache, ShaderRef,
-            ShaderType,
+            Buffer, CachedComputePipelineId, ComputePipelineDescriptor, PipelineCache, Shader,
+            ShaderRef, ShaderType,
         },
         renderer::RenderDevice,
         RenderApp,
@@ -204,9 +211,48 @@ impl<'a, W: ComputeWorker, E: Debug + Copy> AppComputeWorkerBuilder<'a, W, E> {
 
     /// Add a new compute pass to your worker.
     /// They will run sequentially in the order you insert them.
-    pub fn add_pass<S: ComputeShader>(&mut self, workgroups: [u32; 3], vars: &[E]) -> &mut Self {
+    pub fn add_pass<S: ComputeShader>(&mut self, dispatch_size: [u32; 3], vars: &[E]) -> &mut Self {
         if !self.cached_pipeline_ids.contains_key(S::type_path()) {
-            let shader = match S::shader(self.app) {
+            S::dependencies()
+                .into_iter()
+                .for_each(|shader| match shader {
+                    ShaderRef::Default | ShaderRef::Handle(_) => {}
+                    ShaderRef::Path(path) => {
+                        let path_string = path.path().to_str().unwrap();
+
+                        let mut current_directory = std::env::current_dir().unwrap();
+                        current_directory.push("assets");
+                        current_directory.push(path_string);
+                        println!(
+                            "Loading shader from path: {}",
+                            current_directory.to_string_lossy()
+                        );
+
+                        if current_directory.extension().unwrap() != "wgsl" {
+                            panic!("Only WGSL shaders are supported for now.");
+                        }
+
+                        let mut hasher = DefaultHasher::new();
+                        path_string.hash(&mut hasher);
+                        //Seems sketchy to only use a u64 hash, but hash collisions are already pretty rare, and I don't want to import a whole new library for a 128 bit hash.
+                        let hash_bytes = hasher.finish().to_ne_bytes();
+                        let hash = u128::from_ne_bytes(
+                            [hash_bytes, hash_bytes].concat().try_into().unwrap(),
+                        );
+                        let handle = Handle::weak_from_u128(hash);
+
+                        let mut shader_string = String::new();
+                        let _ = File::open(current_directory)
+                            .unwrap()
+                            .read_to_string(&mut shader_string);
+
+                        let mut shader_assets = self.app.world.resource_mut::<Assets<Shader>>();
+                        //Frankly, this isn't great. It's forces the dependency to be written in WGSL.
+                        shader_assets.insert(handle, Shader::from_wgsl(shader_string, path_string));
+                    }
+                });
+
+            let shader = match S::shader() {
                 ShaderRef::Default => None,
                 ShaderRef::Handle(handle) => Some(handle),
                 ShaderRef::Path(path) => {
@@ -235,7 +281,7 @@ impl<'a, W: ComputeWorker, E: Debug + Copy> AppComputeWorkerBuilder<'a, W, E> {
         }
 
         self.steps.push(Step::ComputePass(ComputePass {
-            workgroups,
+            dispatch_size,
             vars: vars.iter().map(|a| format!("{a:?}")).collect(),
             shader_type_path: S::type_path().to_string(),
         }));

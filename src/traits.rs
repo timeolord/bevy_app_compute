@@ -23,7 +23,13 @@ pub trait ComputeShader: TypePath + Send + Sync + 'static {
     ///     "shaders/my_shader.wgsl".into()
     /// }
     /// ```
-    fn shader(app: &mut App) -> ShaderRef;
+    fn shader() -> ShaderRef;
+
+    /// If your shader has dependencies, declare them here.
+    /// The dependencies must be written in WGSL.
+    fn dependencies() -> Vec<ShaderRef> {
+        vec![]
+    }
 
     /// If you don't want to use wgpu's reflection for
     /// your binding layout, you can declare them here.

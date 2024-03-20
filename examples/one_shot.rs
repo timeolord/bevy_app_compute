@@ -7,7 +7,7 @@ use bevy_app_compute::prelude::*;
 struct SimpleShader;
 
 impl ComputeShader for SimpleShader {
-    fn shader(_app: &mut App) -> ShaderRef {
+    fn shader() -> ShaderRef {
         "shaders/simple.wgsl".into()
     }
 }
@@ -68,9 +68,13 @@ fn read_data(mut compute_worker: ResMut<AppComputeWorker<SimpleComputeWorker>>) 
         return;
     };
 
-    let result: Vec<f32> = compute_worker.read_vec(<SimpleComputeWorker as ComputeWorker>::Fields::Values);
+    let result: Vec<f32> =
+        compute_worker.read_vec(<SimpleComputeWorker as ComputeWorker>::Fields::Values);
 
-    compute_worker.write_slice(<SimpleComputeWorker as ComputeWorker>::Fields::Values, &result);
+    compute_worker.write_slice(
+        <SimpleComputeWorker as ComputeWorker>::Fields::Values,
+        &result,
+    );
 
     println!("got {:?}", result)
 }

@@ -45,7 +45,7 @@ struct Boid {
 struct BoidsShader;
 
 impl ComputeShader for BoidsShader {
-    fn shader(_app: &mut App) -> ShaderRef {
+    fn shader() -> ShaderRef {
         "shaders/boids.wgsl".into()
     }
 }
