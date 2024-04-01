@@ -10,7 +10,11 @@ use bevy::{
     },
 };
 
-use crate::{pipeline_cache::AppPipelineCache, traits::ComputeWorker, worker::AppComputeWorker};
+use crate::{
+    pipeline_cache::AppPipelineCache,
+    traits::ComputeWorker,
+    worker::{AppComputeWorker, RunMode},
+};
 
 /// The main plugin. Always include it if you want to use `bevy_app_compute`
 pub struct AppComputePlugin;
@@ -77,12 +81,17 @@ impl<W: ComputeWorker> Plugin for AppComputeWorkerPlugin<W> {
     fn finish(&self, app: &mut App) {
         let worker = W::build(app);
 
-        app.insert_resource(worker)
-            /* .add_systems(PreUpdate, AppComputeWorker::<W>::handle_shader_dependencies) */
-            .add_systems(Update, AppComputeWorker::<W>::extract_pipelines)
-            .add_systems(
-                PostUpdate,
-                (AppComputeWorker::<W>::unmap_all, AppComputeWorker::<W>::run).chain(),
-            );
+        match worker.run_mode() {
+            RunMode::Continuous | RunMode::OneShot(_) => {
+                app.add_systems(Update, AppComputeWorker::<W>::extract_pipelines)
+                    .add_systems(
+                        PostUpdate,
+                        (AppComputeWorker::<W>::unmap_all, AppComputeWorker::<W>::run).chain(),
+                    );
+            }
+            RunMode::Immediate => {}
+        }
+        if worker.run_mode() != RunMode::Immediate {}
+        app.insert_resource(worker);
     }
 }

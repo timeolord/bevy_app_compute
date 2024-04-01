@@ -4,25 +4,33 @@ use std::{marker::PhantomData, ops::Deref};
 use crate::{
     error::{Error, Result},
     pipeline_cache::AppPipelineCache,
-    traits::ComputeWorker,
+    traits::{ComputeShader, ComputeWorker},
     worker_builder::AppComputeWorkerBuilder,
 };
 use bevy::{
     prelude::{Res, ResMut, Resource},
     render::{
-        render_resource::{Buffer, CachedComputePipelineId, ComputePipeline},
+        render_resource::{
+            encase::{internal::WriteInto, StorageBuffer, UniformBuffer},
+            Buffer, CachedComputePipelineId, ComputePipeline, ShaderType,
+        },
         renderer::{RenderDevice, RenderQueue},
     },
     utils::HashMap,
 };
 use bytemuck::{bytes_of, cast_slice, from_bytes, AnyBitPattern, NoUninit};
+
 use std::fmt::Debug;
-use wgpu::{BindGroupEntry, CommandEncoder, CommandEncoderDescriptor, ComputePassDescriptor};
+use wgpu::{
+    util::BufferInitDescriptor, BindGroupEntry, BufferDescriptor, BufferUsages, CommandEncoder,
+    CommandEncoderDescriptor, ComputePassDescriptor,
+};
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum RunMode {
     Continuous,
     OneShot(bool),
+    Immediate,
 }
 
 #[derive(PartialEq)]
@@ -69,6 +77,7 @@ pub struct AppComputeWorker<W: ComputeWorker> {
     steps: Vec<Step>,
     command_encoder: Option<CommandEncoder>,
     run_mode: RunMode,
+    wait_mode: bool,
     _phantom: PhantomData<W>,
 }
 
@@ -100,12 +109,142 @@ impl<W: ComputeWorker, E: Debug + Copy> From<&AppComputeWorkerBuilder<'_, W, E>>
             steps: builder.steps.clone(),
             command_encoder,
             run_mode: builder.run_mode,
+            wait_mode: builder.wait_mode,
             _phantom: PhantomData,
         }
     }
 }
 
 impl<W: ComputeWorker> AppComputeWorker<W> {
+    pub fn run_mode(&self) -> RunMode {
+        self.run_mode
+    }
+    pub fn set_dispatch_size<S: ComputeShader>(&mut self, dispatch_size: [u32; 3]) {
+        let shader_index = self
+            .steps
+            .iter()
+            .position(|step| match step {
+                Step::ComputePass(compute_pass) => {
+                    compute_pass.shader_type_path == S::type_path().to_string()
+                }
+                Step::Swap(_, _) => false,
+            })
+            .expect(&format!("Shader {} not found", S::type_path()));
+
+        match &self.steps[shader_index] {
+            Step::ComputePass(compute_pass) => {
+                let mut new_compute_pass = compute_pass.clone();
+                new_compute_pass.dispatch_size = dispatch_size;
+                self.steps[shader_index] = Step::ComputePass(new_compute_pass);
+            }
+            Step::Swap(_, _) => panic!("Invalid step"),
+        }
+    }
+
+    /// Add a new uniform buffer to the worker, and fill it with `uniform`. Will replace the old buffer if it exists.
+    pub fn add_uniform<T: ShaderType + WriteInto, E: Debug + Copy>(
+        &mut self,
+        render_device: &RenderDevice,
+        name: E,
+        uniform: &T,
+    ) -> &mut Self {
+        T::assert_uniform_compat();
+        let mut buffer = UniformBuffer::new(Vec::new());
+        buffer.write::<T>(uniform).unwrap();
+
+        let old_buffer = self.buffers.insert(
+            format!("{name:?}"),
+            render_device.create_buffer_with_data(&BufferInitDescriptor {
+                label: Some(&format!("{name:?}")),
+                contents: buffer.as_ref(),
+                usage: BufferUsages::COPY_DST | BufferUsages::UNIFORM,
+            }),
+        );
+        if let Some(old_buffer) = old_buffer {
+            old_buffer.destroy();
+        }
+        self
+    }
+
+    /// Add a new storage buffer to the worker, and fill it with `storage`. It will be read only. Will replace the old buffer if it exists.
+    pub fn add_storage<T: ShaderType + WriteInto, E: Debug + Copy>(
+        &mut self,
+        render_device: &RenderDevice,
+        name: E,
+        storage: &T,
+    ) -> &mut Self {
+        let mut buffer = StorageBuffer::new(Vec::new());
+        buffer.write::<T>(storage).unwrap();
+
+        let old_buffer = self.buffers.insert(
+            format!("{name:?}"),
+            render_device.create_buffer_with_data(&BufferInitDescriptor {
+                label: Some(&format!("{name:?}")),
+                contents: buffer.as_ref(),
+                usage: BufferUsages::COPY_DST | BufferUsages::STORAGE,
+            }),
+        );
+        if let Some(old_buffer) = old_buffer {
+            old_buffer.destroy();
+        }
+        self
+    }
+
+    /// Add a new read/write storage buffer to the worker, and fill it with `storage`. Will replace the old buffer if it exists.
+    pub fn add_rw_storage<T: ShaderType + WriteInto, E: Debug + Copy>(
+        &mut self,
+        render_device: &RenderDevice,
+        name: E,
+        storage: &T,
+    ) -> &mut Self {
+        let mut buffer = StorageBuffer::new(Vec::new());
+        buffer.write::<T>(storage).unwrap();
+
+        let old_buffer = self.buffers.insert(
+            format!("{name:?}"),
+            render_device.create_buffer_with_data(&BufferInitDescriptor {
+                label: Some(&format!("{name:?}")),
+                contents: buffer.as_ref(),
+                usage: BufferUsages::COPY_DST | BufferUsages::COPY_SRC | BufferUsages::STORAGE,
+            }),
+        );
+        if let Some(old_buffer) = old_buffer {
+            old_buffer.destroy();
+        }
+        self
+    }
+
+    /// Create two staging buffers, one to read from and one to write to.
+    /// Additionally, it will create a read/write storage buffer to access from
+    /// your shaders.
+    /// The buffer will be filled with `data`
+    /// Will replace the old buffer if it exists.
+    pub fn add_staging<T: ShaderType + WriteInto, E: Debug + Copy>(
+        &mut self,
+        render_device: &RenderDevice,
+        name: E,
+        data: &T,
+    ) -> &mut Self {
+        self.add_rw_storage(render_device, name, data);
+        let buffer = self.buffers.get(&format!("{name:?}")).unwrap();
+
+        let staging = StagingBuffer {
+            mapped: true,
+            buffer: render_device.create_buffer(&BufferDescriptor {
+                label: Some(&format!("{name:?}")),
+                size: buffer.size(),
+                usage: BufferUsages::MAP_READ | BufferUsages::COPY_DST,
+                mapped_at_creation: true,
+            }),
+        };
+
+        let old_buffer = self.staging_buffers.insert(format!("{name:?}"), staging);
+        if let Some(old_buffer) = old_buffer {
+            old_buffer.buffer.destroy();
+        }
+        self
+    }
+
     #[inline]
     fn dispatch(&mut self, index: usize) -> Result<()> {
         let compute_pass = match &self.steps[index] {
@@ -323,11 +462,12 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
 
     #[inline]
     fn poll(&self) -> bool {
-        match self
-            .render_device
-            .wgpu_device()
-            .poll(wgpu::MaintainBase::Wait)
-        {
+        let maintain = if self.wait_mode || self.run_mode == RunMode::Immediate {
+            wgpu::MaintainBase::Wait
+        } else {
+            wgpu::MaintainBase::Poll
+        };
+        match self.render_device.wgpu_device().poll(maintain) {
             wgpu::MaintainResult::SubmissionQueueEmpty => true,
             wgpu::MaintainResult::Ok => false,
         }
@@ -345,6 +485,24 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
         match self.run_mode {
             RunMode::Continuous => {}
             RunMode::OneShot(_) => self.run_mode = RunMode::OneShot(true),
+            RunMode::Immediate => {
+                panic!("Immediate mode is not supported in execute(), please use execute_now() instead");
+            }
+        }
+    }
+
+    ///Execute the compute shader immediately and wait for the result. This will return false if the worker is not ready to execute, e.g the pipeline is not ready. This will only happen before the first time the ExtractSchedule is run.
+    pub fn execute_now(&mut self, pipeline_cache: Res<AppPipelineCache>) -> bool {
+        match self.run_mode {
+            RunMode::Continuous | RunMode::OneShot(_) => {
+                panic!("Continuous and OneShot modes are not supported in execute_now(), please use execute() instead");
+            }
+            RunMode::Immediate => {
+                self.extract_pipelines_aux(&pipeline_cache);
+                self.unmap_all_aux();
+                self.poll();
+                self.run_immediate()
+            }
         }
     }
 
@@ -354,16 +512,47 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
     }
 
     pub(crate) fn run(mut worker: ResMut<Self>) {
-        if worker.ready() {
-            worker.state = WorkerState::Available;
+        worker.run_aux();
+    }
+    fn run_immediate(&mut self) -> bool {
+        // Workaround for interior mutability
+        for i in 0..self.steps.len() {
+            let result = match self.steps[i] {
+                Step::ComputePass(_) => self.dispatch(i),
+                Step::Swap(_, _) => self.swap(i),
+            };
+
+            if let Err(err) = result {
+                match err {
+                    Error::PipelineNotReady => return false,
+                    _ => panic!("{:?}", err),
+                }
+            }
         }
 
-        if worker.ready_to_execute() {
+        self.read_staging_buffers().unwrap();
+        self.submit();
+        self.map_staging_buffers();
+
+        if self.poll() {
+            self.command_encoder = Some(
+                self.render_device
+                    .create_command_encoder(&CommandEncoderDescriptor { label: None }),
+            );
+        }
+        true
+    }
+    fn run_aux(&mut self) {
+        if self.ready() {
+            self.state = WorkerState::Available;
+        }
+
+        if self.ready_to_execute() {
             // Workaround for interior mutability
-            for i in 0..worker.steps.len() {
-                let result = match worker.steps[i] {
-                    Step::ComputePass(_) => worker.dispatch(i),
-                    Step::Swap(_, _) => worker.swap(i),
+            for i in 0..self.steps.len() {
+                let result = match self.steps[i] {
+                    Step::ComputePass(_) => self.dispatch(i),
+                    Step::Swap(_, _) => self.swap(i),
                 };
 
                 if let Err(err) = result {
@@ -374,29 +563,32 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
                 }
             }
 
-            worker.read_staging_buffers().unwrap();
-            worker.submit();
-            worker.map_staging_buffers();
+            self.read_staging_buffers().unwrap();
+            self.submit();
+            self.map_staging_buffers();
         }
 
-        if worker.run_mode != RunMode::OneShot(false) && worker.poll() {
-            worker.state = WorkerState::FinishedWorking;
-            worker.command_encoder = Some(
-                worker
-                    .render_device
+        if self.run_mode != RunMode::OneShot(false) && self.poll() {
+            self.state = WorkerState::FinishedWorking;
+            self.command_encoder = Some(
+                self.render_device
                     .create_command_encoder(&CommandEncoderDescriptor { label: None }),
             );
 
-            match worker.run_mode {
-                RunMode::Continuous => {}
-                RunMode::OneShot(_) => worker.run_mode = RunMode::OneShot(false),
+            match self.run_mode {
+                RunMode::Continuous | RunMode::Immediate => {}
+                RunMode::OneShot(_) => self.run_mode = RunMode::OneShot(false),
             };
         }
     }
 
     pub(crate) fn unmap_all(mut worker: ResMut<Self>) {
-        if worker.poll() {
-            for (_, staging_buffer) in &mut worker.staging_buffers {
+        worker.unmap_all_aux();
+    }
+
+    fn unmap_all_aux(&mut self) {
+        if self.ready_to_execute() || self.run_mode == RunMode::Immediate {
+            for (_, staging_buffer) in &mut self.staging_buffers {
                 if staging_buffer.mapped {
                     staging_buffer.buffer.unmap();
                     staging_buffer.mapped = false;
@@ -409,8 +601,12 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
         mut worker: ResMut<Self>,
         pipeline_cache: Res<AppPipelineCache>,
     ) {
-        for (type_path, cached_id) in &worker.cached_pipeline_ids.clone() {
-            let Some(pipeline) = worker.pipelines.get(type_path) else {
+        worker.extract_pipelines_aux(&pipeline_cache);
+    }
+
+    fn extract_pipelines_aux(&mut self, pipeline_cache: &AppPipelineCache) {
+        for (type_path, cached_id) in &self.cached_pipeline_ids.clone() {
+            let Some(pipeline) = self.pipelines.get(type_path) else {
                 continue;
             };
 
@@ -420,27 +616,10 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
 
             let cached_id = *cached_id;
 
-            worker.pipelines.insert(
+            self.pipelines.insert(
                 type_path.clone(),
                 pipeline_cache.get_compute_pipeline(cached_id).cloned(),
             );
         }
     }
-
-    /* pub(crate) fn handle_shader_dependencies(
-        mut worker: ResMut<Self>,
-        mut shader_assets: ResMut<Assets<Shader>>,
-    ) {
-        let shaders = take(&mut worker.shaders);
-        shaders.into_iter().for_each(|(handle, dependencies)| {
-            //Wait for shader to load
-            while shader_assets.get(handle.clone()).is_none() {}
-            let shader = shader_assets.get_mut(handle).unwrap();
-            shader.imports.extend(
-                dependencies
-                    .into_iter()
-                    .map(|path| ShaderImport::AssetPath(path.to_str().unwrap().to_string())),
-            );
-        });
-    } */
 }

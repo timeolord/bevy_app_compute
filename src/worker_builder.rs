@@ -37,6 +37,7 @@ pub struct AppComputeWorkerBuilder<'a, W: ComputeWorker, E: Debug + Copy> {
     pub(crate) staging_buffers: HashMap<String, StagingBuffer>,
     pub(crate) steps: Vec<Step>,
     pub(crate) run_mode: RunMode,
+    pub(crate) wait_mode: bool,
     _phantom: PhantomData<(W, E)>,
 }
 
@@ -50,8 +51,18 @@ impl<'a, W: ComputeWorker, E: Debug + Copy> AppComputeWorkerBuilder<'a, W, E> {
             staging_buffers: HashMap::default(),
             steps: vec![],
             run_mode: RunMode::Continuous,
+            wait_mode: true,
             _phantom: PhantomData,
         }
+    }
+
+    ///Set the wait mode of the worker.
+    ///If `wait` is true, the worker will cause the CPU to wait for the GPU to finish before running the next frame.
+    ///By default it is set to true.
+    ///This is useful if you have a computationally heavy worker, and don't want to block the CPU.
+    pub fn set_wait_mode(&mut self, wait: bool) -> &mut Self {
+        self.wait_mode = wait;
+        self
     }
 
     /// Add a new uniform buffer to the worker, and fill it with `uniform`.
@@ -304,6 +315,12 @@ impl<'a, W: ComputeWorker, E: Debug + Copy> AppComputeWorkerBuilder<'a, W, E> {
     /// The worker will run when requested.
     pub fn one_shot(&mut self) -> &mut Self {
         self.run_mode = RunMode::OneShot(false);
+        self
+    }
+
+    /// The worker will run immediately and wait for the GPU to finish.
+    pub fn immediate(&mut self) -> &mut Self {
+        self.run_mode = RunMode::Immediate;
         self
     }
 

@@ -1,8 +1,5 @@
 #![doc = include_str!("../README.md")]
 
-
-
-
 mod error;
 mod pipeline_cache;
 mod plugin;
@@ -13,6 +10,7 @@ mod worker_builder;
 /// Helper module to import most used elements.
 pub mod prelude {
     pub use crate::{
+        pipeline_cache::AppPipelineCache,
         plugin::{AppComputePlugin, AppComputeWorkerPlugin},
         traits::{ComputeShader, ComputeWorker},
         worker::AppComputeWorker,
