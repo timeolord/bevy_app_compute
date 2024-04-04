@@ -27,5 +27,6 @@ fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         }
     }
     workgroupBarrier();
-    result[sample_index] = sum / f32(length);
+    let pos_index = pos.y * image_size.x + pos.x;
+    result[pos_index] = sum / f32(length);
 }
