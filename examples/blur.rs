@@ -92,7 +92,7 @@ fn blur(
     mut images: ResMut<Assets<Image>>,
     mut contexts: EguiContexts,
 ) {
-    if !compute_worker.execute_now(pipeline_cache) {
+    if !compute_worker.execute_now(&pipeline_cache) {
         return;
     }
     let original: Vec<f32> = compute_worker.read_vec(BlurWorkerFields::Image);

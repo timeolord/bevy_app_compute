@@ -27,15 +27,5 @@ fn main(@builtin(global_invocation_id) invocation_id: vec3<u32>) {
         }
     }
     workgroupBarrier();
-    for (var x: i32 = -radius.x; x < radius.x; x++) {
-        for (var y: i32 = -radius.y; y < radius.y; y++) {
-            let offset = vec2<i32>(x, y);
-            let sample_pos = pos + offset;
-            if (sample_pos.x < 0 || sample_pos.x >= image_size.x || sample_pos.y < 0 || sample_pos.y >= image_size.y) {
-                continue;
-            }
-            let sample_index = sample_pos.y * image_size.x + sample_pos.x;
-            result[sample_index] = sum / f32(length);
-        }
-    }
+    result[sample_index] = sum / f32(length);
 }

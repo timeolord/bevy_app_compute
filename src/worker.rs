@@ -492,7 +492,7 @@ impl<W: ComputeWorker> AppComputeWorker<W> {
     }
 
     ///Execute the compute shader immediately and wait for the result. This will return false if the worker is not ready to execute, e.g the pipeline is not ready. This will only happen before the first time the ExtractSchedule is run.
-    pub fn execute_now(&mut self, pipeline_cache: Res<AppPipelineCache>) -> bool {
+    pub fn execute_now(&mut self, pipeline_cache: &AppPipelineCache) -> bool {
         match self.run_mode {
             RunMode::Continuous | RunMode::OneShot(_) => {
                 panic!("Continuous and OneShot modes are not supported in execute_now(), please use execute() instead");
