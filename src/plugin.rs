@@ -8,12 +8,13 @@ use bevy::{
         },
         MainWorld, RenderApp,
     },
+    tasks::ComputeTaskPool,
 };
 
 use crate::{
     pipeline_cache::AppPipelineCache,
     traits::ComputeWorker,
-    worker::{AppComputeWorker, RunMode},
+    worker::AppComputeWorker,
 };
 
 /// The main plugin. Always include it if you want to use `bevy_app_compute`
@@ -29,11 +30,9 @@ impl Plugin for AppComputePlugin {
     fn finish(&self, app: &mut App) {
         app.sub_app_mut(RenderApp)
             .add_systems(ExtractSchedule, update_app_pipeline);
-        /*  app.insert_resource(AppPipelineCache::new(render_device))
-        .add_systems(PreUpdate, extract_shaders)
-        .add_systems(Update, process_pipeline_queue_system); */
     }
 }
+
 fn update_app_pipeline(pipeline_cache: Res<PipelineCache>, mut app_world: ResMut<MainWorld>) {
     let mut app_pipeline_cache = app_world.get_resource_mut::<AppPipelineCache>().unwrap();
     let mut cloned_pipelines = vec![];
@@ -76,22 +75,29 @@ impl<W: ComputeWorker> Default for AppComputeWorkerPlugin<W> {
 }
 
 impl<W: ComputeWorker> Plugin for AppComputeWorkerPlugin<W> {
-    fn build(&self, _app: &mut App) {}
+    fn build(&self, app: &mut App) {
+        // register systems with run_if guards so they only run when worker exists
+        app.add_systems(
+            Update,
+            AppComputeWorker::<W>::extract_pipelines
+                .run_if(resource_exists::<AppComputeWorker<W>>),
+        )
+        .add_systems(
+            PostUpdate,
+            (AppComputeWorker::<W>::unmap_all, AppComputeWorker::<W>::run)
+                .chain()
+                .run_if(resource_exists::<AppComputeWorker<W>>),
+        );
+    }
 
     fn finish(&self, app: &mut App) {
-        let worker = W::build(app);
-
-        match worker.run_mode() {
-            RunMode::Continuous | RunMode::OneShot(_) => {
-                app.add_systems(Update, AppComputeWorker::<W>::extract_pipelines)
-                    .add_systems(
-                        PostUpdate,
-                        (AppComputeWorker::<W>::unmap_all, AppComputeWorker::<W>::run).chain(),
-                    );
-            }
-            RunMode::Immediate => {}
+        // ensure task pools are initialized before we access render resources
+        if ComputeTaskPool::try_get().is_none() {
+            // this handles the case where plugins are added in an order where task pools aren't ready yet
+            ComputeTaskPool::get_or_init(bevy::tasks::TaskPool::new);
         }
-        if worker.run_mode() != RunMode::Immediate {}
+
+        let worker = W::build(app);
         app.insert_resource(worker);
     }
 }

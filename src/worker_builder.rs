@@ -305,7 +305,7 @@ impl<'a, W: ComputeWorker, E: Debug + Copy> AppComputeWorkerBuilder<'a, W, E> {
         self
     }
 
-    /// The worker will run every frames.
+    /// The worker will run every frame.
     /// This is the default mode.
     pub fn continuous(&mut self) -> &mut Self {
         self.run_mode = RunMode::Continuous;
